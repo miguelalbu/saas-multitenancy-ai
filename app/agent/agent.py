@@ -1,25 +1,20 @@
+"""PydanticAI agent definition (Pillar 2).
+
+The agent is a module-level singleton. Tools are passed at construction time
+so they are importable and patchable in tests.
 """
-PydanticAI Agent Definition (Pillar 2)
-=======================================
-This file defines and configures the PydanticAI conversational agent.
 
-You should implement here:
-- Create a PydanticAI Agent instance connected to an LLM
-  (OpenAI API, Gemini API, or local Ollama)
-- Configure the agent with a system prompt (from app/agent/prompts.py)
-- Register tools (from app/agent/tools.py) that the agent can call
-- Define the agent's response model using Pydantic schemas
+from __future__ import annotations
 
-Example:
-    from pydantic_ai import Agent
-    from app.agent.prompts import SYSTEM_PROMPT
-    from app.agent.tools import create_task_tool
+from pydantic_ai import Agent
 
-    agent = Agent(
-        model="openai:gpt-4o",
-        system_prompt=SYSTEM_PROMPT,
-        tools=[create_task_tool],
-    )
+from app.agent.prompts import SYSTEM_PROMPT
+from app.agent.tools import AgentDeps, create_task, list_tasks
 
-The agent is invoked by the POST /v1/chat endpoint.
-"""
+task_agent: Agent[AgentDeps, str] = Agent(
+    model="openai-chat:gpt-4o-mini",
+    deps_type=AgentDeps,
+    output_type=str,
+    system_prompt=SYSTEM_PROMPT,
+    tools=[create_task, list_tasks],
+)

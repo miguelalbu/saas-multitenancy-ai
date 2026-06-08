@@ -1,11 +1,19 @@
-"""
-Chat Schemas (Pillar 2)
-========================
-Pydantic models for the AI chat endpoint request/response.
+"""Chat schemas (Pillar 2)."""
 
-You should implement here:
-- ChatRequest: message (str) - the user's natural language input
-- ChatResponse: response (str) - the agent's text reply,
-  actions_taken (list[dict], optional) - tools the agent called,
-  e.g., [{"tool": "create_task", "result": {"task_id": "..."}}]
-"""
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4096)
+
+
+class ToolCall(BaseModel):
+    tool: str
+    result: dict
+
+
+class ChatResponse(BaseModel):
+    response: str
+    actions_taken: list[ToolCall] = Field(default_factory=list)
