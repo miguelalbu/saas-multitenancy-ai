@@ -1,21 +1,64 @@
+"""Task data-access layer.
+
+Every query is filtered by ``organization_id`` so a tenant can never read or
+mutate another tenant's tasks.
 """
-Task Repository (Data Access Layer)
-=====================================
-This file encapsulates all database queries for the Task model.
 
-You should implement here:
-- get_by_id(db, org_id, task_id): Fetch a single task (filtered by org)
-- get_all(db, org_id, skip, limit): List tasks with pagination
-- create(db, task: Task): Insert a new task
-- update(db, task: Task, data: dict): Update task fields
-- delete(db, task: Task): Remove a task
+from __future__ import annotations
 
-All queries MUST filter by organization_id to enforce multi-tenant isolation.
-Never return data from another organization.
+import uuid
 
-Example:
-    async def get_all(db: AsyncSession, org_id: UUID, skip=0, limit=20):
-        query = select(Task).where(Task.organization_id == org_id).offset(skip).limit(limit)
-        result = await db.execute(query)
-        return result.scalars().all()
-"""
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.task import Task
+
+
+async def get_by_id(
+    db: AsyncSession, organization_id: uuid.UUID, task_id: uuid.UUID
+) -> Task | None:
+    result = await db.execute(
+        select(Task).where(
+            Task.id == task_id,
+            Task.organization_id == organization_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_all(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    *,
+    skip: int = 0,
+    limit: int = 50,
+) -> tuple[list[Task], int]:
+    base = select(Task).where(Task.organization_id == organization_id)
+
+    total = await db.scalar(
+        select(func.count()).select_from(base.subquery())
+    )
+    result = await db.execute(
+        base.order_by(Task.created_at.desc()).offset(skip).limit(limit)
+    )
+    return list(result.scalars().all()), int(total or 0)
+
+
+async def create(db: AsyncSession, task: Task) -> Task:
+    db.add(task)
+    await db.flush()
+    await db.refresh(task)
+    return task
+
+
+async def update(db: AsyncSession, task: Task, data: dict) -> Task:
+    for field, value in data.items():
+        setattr(task, field, value)
+    await db.flush()
+    await db.refresh(task)
+    return task
+
+
+async def delete(db: AsyncSession, task: Task) -> None:
+    await db.delete(task)
+    await db.flush()

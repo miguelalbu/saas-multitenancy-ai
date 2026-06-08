@@ -1,13 +1,47 @@
-"""
-User Repository (Data Access Layer)
-=====================================
-This file encapsulates all database queries for the User model.
+"""User data-access layer."""
 
-You should implement here:
-- get_by_email(db, org_id, email): Fetch a user by email within an org
-- get_by_id(db, user_id): Fetch a user by ID
-- create(db, user: User): Insert a new user
+from __future__ import annotations
 
-Used by authentication logic to validate credentials and by
-the dependency injection system to resolve the current user.
-"""
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.user import User
+
+
+async def get_by_email(
+    db: AsyncSession, organization_id: uuid.UUID, email: str
+) -> User | None:
+    """Fetch a user by email within a single organization."""
+    result = await db.execute(
+        select(User).where(
+            User.organization_id == organization_id,
+            User.email == email,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_by_email_global(db: AsyncSession, email: str) -> User | None:
+    """Fetch a user by email across organizations (first active match).
+
+    Used at login when the tenant is not yet known from the request.
+    """
+    result = await db.execute(
+        select(User).where(User.email == email, User.is_active.is_(True))
+    )
+    return result.scalars().first()
+
+
+async def get_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
+    """Fetch a user by primary key."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()
+
+
+async def create(db: AsyncSession, user: User) -> User:
+    """Persist a new user."""
+    db.add(user)
+    await db.flush()
+    return user
