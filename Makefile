@@ -61,29 +61,39 @@ bash:         ## Open a bash shell inside the API container
 	$(API) bash
 
 # ─── Tests ──────────────────────────────────────────────────
+# All test targets install dev dependencies first (pytest is not in the main
+# image) and run everything from /app — the container's WORKDIR.
+
+install-dev:  ## Install test/lint dev dependencies inside the container
+	$(API) pip install -q -r requirements-dev.txt
 
 test:         ## Run the full test suite
-	$(API) python -m pytest -v
+	$(API) bash -c "pip install -q -r requirements-dev.txt && python -m pytest -v"
 
 test-pillar1: ## Run Pillar 1 tests (auth, tasks, multi-tenant)
-	$(API) python -m pytest tests/test_auth.py tests/test_tasks.py tests/test_multi_tenant.py -v
+	$(API) bash -c "pip install -q -r requirements-dev.txt && python -m pytest tests/test_auth.py tests/test_tasks.py tests/test_multi_tenant.py -v"
 
 test-pillar2: ## Run Pillar 2 tests (chat / AI agent)
-	$(API) python -m pytest tests/test_chat.py -v
+	$(API) bash -c "pip install -q -r requirements-dev.txt && python -m pytest tests/test_chat.py -v"
 
 test-pillar3: ## Run Pillar 3 tests (webhook, websocket)
-	$(API) python -m pytest tests/test_webhook.py tests/test_websocket.py -v
+	$(API) bash -c "pip install -q -r requirements-dev.txt && python -m pytest tests/test_webhook.py tests/test_websocket.py -v"
 
 test-q:       ## Run full suite (quiet output)
-	$(API) python -m pytest -q
+	$(API) bash -c "pip install -q -r requirements-dev.txt && python -m pytest -q"
 
 # ─── Code Quality ───────────────────────────────────────────
 
 lint:         ## Run ruff linter
-	$(API) ruff check app seed tests
+	$(API) bash -c "pip install -q -r requirements-dev.txt && ruff check app seed tests"
 
 lint-fix:     ## Run ruff linter and auto-fix issues
-	$(API) ruff check --fix app seed tests
+	$(API) bash -c "pip install -q -r requirements-dev.txt && ruff check --fix app seed tests"
+
+# ─── Frontend ───────────────────────────────────────────────
+
+open:         ## Open the frontend in the default browser
+	start http://localhost:8000
 
 # ─── Help ───────────────────────────────────────────────────
 
@@ -94,7 +104,7 @@ help:         ## List all available targets
 .PHONY: up up-build down restart logs logs-api ps \
         migrate upgrade downgrade migration-status migration-history db-shell \
         seed shell bash \
-        test test-pillar1 test-pillar2 test-pillar3 test-q \
-        lint lint-fix help
+        install-dev test test-pillar1 test-pillar2 test-pillar3 test-q \
+        lint lint-fix open help
 
 .DEFAULT_GOAL := help
