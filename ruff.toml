@@ -1,0 +1,6 @@
+[ruff]
+target-version = "py312"
+line-length = 88
+
+[ruff.lint]
+select = ["E", "F", "I", "N", "W"]
