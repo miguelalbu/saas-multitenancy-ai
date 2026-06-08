@@ -1,13 +1,13 @@
-"""
-WebSocket Notification Schemas (Pillar 3)
-==========================================
-Pydantic models for WebSocket messages pushed to connected clients.
+"""WebSocket notification schemas (Pillar 3)."""
 
-You should implement here:
-- WSNotification: type (str, e.g., "task_updated", "new_audit_log"),
-  data (dict) - the notification payload,
-  timestamp (datetime)
+from __future__ import annotations
 
-These schemas structure the JSON messages sent via WebSocket
-after background tasks complete.
-"""
+from datetime import UTC, datetime
+
+from pydantic import BaseModel, Field
+
+
+class WSNotification(BaseModel):
+    type: str
+    data: dict
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))

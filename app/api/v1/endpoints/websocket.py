@@ -1,22 +1,50 @@
+"""WebSocket notifications endpoint (Pillar 3).
+
+Clients connect to ``/v1/ws/notifications?token=<jwt>`` and receive push
+notifications when background tasks complete. Authentication is done via the
+``token`` query parameter because the browser WebSocket API does not support
+custom headers.
 """
-WebSocket Notifications Endpoint (Pillar 3)
-=============================================
-This file implements the real-time WebSocket connection for push notifications.
 
-You should implement here:
-- WS /v1/ws/notifications: WebSocket endpoint that maintains a persistent
-  connection with the client for real-time notifications
+from __future__ import annotations
 
-The endpoint must:
-1. Authenticate the connecting client (via query param token or first message)
-2. Extract organization_id to ensure multi-tenant isolation
-3. Register the connection in the WebSocketManager (app/core/websocket_manager.py)
-4. Keep the connection alive and listen for incoming messages (heartbeat/ping)
-5. Handle disconnection gracefully (remove from manager)
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
-Notifications are PUSHED to the client by the background tasks (Pillar 3)
-when async actions complete. The client does NOT need to poll.
+from app.core.security import decode_access_token
+from app.core.websocket_manager import manager
 
-Example notification pushed to client:
-    {"type": "task_updated", "data": {"task_id": "uuid", "status": "overdue"}}
-"""
+router = APIRouter()
+
+
+@router.websocket("/ws/notifications")
+async def websocket_notifications(
+    websocket: WebSocket,
+    token: str = Query(...),
+) -> None:
+    """Maintain a persistent connection for real-time push notifications.
+
+    The client authenticates via JWT query param. On connect, the socket is
+    registered under the caller's ``organization_id`` so that ``broadcast``
+    never leaks messages across tenants. The loop keeps the connection alive
+    and handles client pings.
+    """
+    # Validate token before accepting the connection.
+    try:
+        payload = decode_access_token(token)
+    except Exception:
+        await websocket.close(code=1008)  # Policy Violation
+        return
+
+    org_id = payload.organization_id
+    await manager.connect(websocket, org_id)
+
+    try:
+        while True:
+            # Keep connection alive; echo any text frame back as a pong.
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await manager.disconnect(websocket, org_id)

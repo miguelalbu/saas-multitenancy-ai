@@ -1,19 +1,14 @@
-"""
-Notification Service (Pillar 3 - Real-Time Push)
-==================================================
-This file bridges background tasks with WebSocket notifications.
+"""Notification service — bridges background tasks with WebSocket push (Pillar 3)."""
 
-You should implement here:
-- notify(organization_id, message): Sends a notification to all connected
-  WebSocket clients within the given organization
-- Uses the ConnectionManager from app/core/websocket_manager.py
+from __future__ import annotations
 
-This service is called after any background task completes successfully,
-ensuring reactive real-time updates for connected clients.
+import uuid
 
-Example:
-    from app.core.websocket_manager import manager
+from app.core.websocket_manager import manager
+from app.schemas.websocket import WSNotification
 
-    async def notify(org_id: str, message: dict):
-        await manager.broadcast(org_id, message)
-"""
+
+async def notify(org_id: uuid.UUID, notification_type: str, data: dict) -> None:
+    """Push a structured notification to all WebSocket clients of ``org_id``."""
+    msg = WSNotification(type=notification_type, data=data)
+    await manager.broadcast(org_id, msg.model_dump(mode="json"))
