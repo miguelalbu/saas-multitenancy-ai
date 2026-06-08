@@ -1,19 +1,36 @@
-"""
-Database Configuration
-=======================
-This file sets up the async SQLAlchemy engine and session factory.
+"""Async SQLAlchemy engine and session factory."""
 
-You should implement here:
-- Create an AsyncEngine using create_async_engine() with the DATABASE_URL
-  from settings
-- Create an async_session_maker using sessionmaker() with class_=AsyncSession
-- (Optional) A helper function to initialize/close the engine on app startup/shutdown
+from collections.abc import AsyncGenerator
 
-Example:
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
-    engine = create_async_engine(settings.DATABASE_URL, echo=settings.DEBUG)
-    async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
+from app.config import settings
 
-This session factory is used by the get_db() dependency in app/api/deps.py.
-"""
+engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+    future=True,
+    pool_pre_ping=True,
+)
+
+async_session_maker = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autoflush=False,
+)
+
+
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    """Yield a database session and ensure it is closed afterwards."""
+    async with async_session_maker() as session:
+        yield session
+
+
+async def dispose_engine() -> None:
+    """Dispose the engine connection pool (called on app shutdown)."""
+    await engine.dispose()
