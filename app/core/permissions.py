@@ -1,25 +1,36 @@
-"""
-RBAC Permission System (Pillar 1)
-==================================
-This file implements the Role-Based Access Control middleware/decorator.
+"""RBAC permission dependencies (Pillar 1)."""
 
-You should implement here:
-- A dependency or decorator that checks if the current user has the required
-  scope/permission to access a route
-- If the user lacks the permission, raise HTTPException 403 Forbidden
+from __future__ import annotations
 
-Example:
-    from functools import wraps
-    from fastapi import HTTPException, Depends
+from collections.abc import Callable
 
-    def require_permission(scope: str):
-        async def permission_checker(current_user = Depends(get_current_user)):
-            if scope not in current_user.scopes:
-                raise HTTPException(status_code=403, detail="Insufficient permissions")
-            return current_user
-        return permission_checker
+from fastapi import Depends, HTTPException, status
 
-Usage in endpoints:
-    @router.get("/tasks", dependencies=[Depends(require_permission("task:read"))])
-    async def list_tasks(...):
-"""
+from app.api.deps import CurrentUser, get_current_user
+
+
+def require_scope(*required: str) -> Callable[..., CurrentUser]:
+    """Build a dependency enforcing that the user holds all ``required`` scopes.
+
+    Returns the authenticated :class:`CurrentUser` so endpoints can both gate
+    access and reuse the resolved context.
+
+    Usage::
+
+        @router.get("/tasks")
+        async def list_tasks(user = Depends(require_scope("task:read"))):
+            ...
+    """
+
+    async def checker(
+        current_user: CurrentUser = Depends(get_current_user),
+    ) -> CurrentUser:
+        missing = [scope for scope in required if scope not in current_user.scopes]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing required scope(s): {', '.join(missing)}",
+            )
+        return current_user
+
+    return checker
