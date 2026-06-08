@@ -1,8 +1,8 @@
 """Shared pytest fixtures.
 
 Tests run against a dedicated ``desafio_test`` database so they never touch
-development/seed data. The schema is created once per session and every test
-starts from truncated tables for full isolation.
+development/seed data. The schema is created fresh (drop+create) for every
+test function to guarantee full isolation.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-import app.models  # noqa: F401  -- ensure all models register on Base.metadata
+import app.models  # noqa: F401  -- registers all models on Base.metadata
 from app.api.deps import get_db
 from app.config import settings
 from app.core.scopes import ALL_SCOPES, MEMBER_SCOPES
@@ -38,7 +38,6 @@ TEST_DATABASE_URL = (
 
 
 async def _ensure_test_database() -> None:
-    """Create the test database if it does not exist yet."""
     conn = await asyncpg.connect(
         host=settings.POSTGRES_HOST,
         port=settings.POSTGRES_PORT,
@@ -58,40 +57,34 @@ async def _ensure_test_database() -> None:
 
 @pytest_asyncio.fixture
 async def engine():
-    """Function-scoped engine with a freshly created schema per test.
-
-    Function scope keeps every connection on the same event loop that
-    pytest-asyncio creates for the test, and the drop/create cycle guarantees a
-    clean slate without relying on TRUNCATE.
-    """
+    """Function-scoped engine: drops and recreates the schema for each test."""
     await _ensure_test_database()
-    engine = create_async_engine(TEST_DATABASE_URL, future=True)
-    async with engine.begin() as conn:
+    _engine = create_async_engine(TEST_DATABASE_URL, future=True)
+    async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
-    yield engine
-    await engine.dispose()
+    yield _engine
+    await _engine.dispose()
 
 
 @pytest_asyncio.fixture
-async def db_session(engine) -> AsyncGenerator[AsyncSession, None]:
-    """Function-scoped session bound to the per-test engine."""
-    session_maker = async_sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
-    async with session_maker() as session:
+async def test_session_maker(engine):
+    """Expose the test async_sessionmaker so agent tools can use the test DB."""
+    return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+@pytest_asyncio.fixture
+async def db_session(test_session_maker) -> AsyncGenerator[AsyncSession, None]:
+    async with test_session_maker() as session:
         yield session
 
 
 @pytest_asyncio.fixture
-async def client(engine, db_session) -> AsyncGenerator[AsyncClient, None]:
+async def client(engine, test_session_maker, db_session) -> AsyncGenerator[AsyncClient, None]:
     """HTTP client with get_db overridden to the test database."""
-    session_maker = async_sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
 
     async def _override_get_db() -> AsyncGenerator[AsyncSession, None]:
-        async with session_maker() as session:
+        async with test_session_maker() as session:
             yield session
 
     app.dependency_overrides[get_db] = _override_get_db
@@ -102,8 +95,6 @@ async def client(engine, db_session) -> AsyncGenerator[AsyncClient, None]:
 
 
 class OrgFixture:
-    """Holds the IDs and ready-to-use auth headers for a seeded organization."""
-
     def __init__(
         self,
         org_id: uuid.UUID,
@@ -111,16 +102,18 @@ class OrgFixture:
         member_id: uuid.UUID,
         admin_headers: dict[str, str],
         member_headers: dict[str, str],
+        session_maker,
     ) -> None:
         self.org_id = org_id
         self.admin_id = admin_id
         self.member_id = member_id
         self.admin_headers = admin_headers
         self.member_headers = member_headers
+        self.session_maker = session_maker  # passed to AgentDeps in chat tests
 
 
 @pytest_asyncio.fixture
-async def make_org(db_session):
+async def make_org(db_session, test_session_maker):
     """Factory that creates an organization with an admin + member user."""
 
     async def _make(name: str) -> OrgFixture:
@@ -165,6 +158,7 @@ async def make_org(db_session):
             member_id=member.id,
             admin_headers=headers(admin.id, ALL_SCOPES),
             member_headers=headers(member.id, MEMBER_SCOPES),
+            session_maker=test_session_maker,
         )
 
     return _make
