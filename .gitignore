@@ -50,3 +50,7 @@ htmlcov/
 
 # ruff
 .ruff_cache/
+
+# Local dev tools (not part of submission)
+frontend/
+notion/
