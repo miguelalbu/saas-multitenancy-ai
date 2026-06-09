@@ -1,10 +1,10 @@
 # Projeto Multi-tenant SaaS AI
 
-## Objetivo
+## Sobre o Projeto
 
-O objetivo deste desafio é arquitetar e desenvolver o backend de uma plataforma SaaS corporativa multi-tenant, orientada a eventos, com atualizações em tempo real e integrada a um agente de Inteligência Artificial para automação de fluxos de trabalho.
+Backend de uma plataforma SaaS corporativa de gerenciamento de tarefas construída como solução ao desafio técnico da Clara.AI. A aplicação é multi-tenant, orientada a eventos e integrada a um agente de IA conversacional.
 
-A implementação cobre três pilares técnicos: isolamento multi-tenant com RBAC, agente conversacional com PydanticAI e tool calling, e motor de automações com WebSocket para notificações em tempo real.
+Foram implementados três pilares técnicos completos: isolamento de dados por organização com RBAC baseado em escopos JWT, agente conversacional com PydanticAI e tool calling que persiste ações reais no banco, e motor de automações via webhook com notificações push em tempo real por WebSocket. O projeto inclui 29 testes automatizados cobrindo todos os pilares e está 100% containerizado com Docker Compose.
 
 ---
 
@@ -491,12 +491,11 @@ O `Automation Engine` não é chamado diretamente — ele *reage* a eventos de d
 
 ---
 
-## Justificativa da Estratégia Assíncrona
+## Por que asyncio nativo e não Celery/Redis?
 
-Escolhemos **`asyncio` nativo** (FastAPI + `asyncio.create_task`) como estratégia de mensageria/assincronismo porque:
+A stack de mensageria usa `asyncio.create_task` em vez de workers externos (Celery, RabbitMQ, Redis) por uma decisão deliberada de escopo:
 
-- O escopo do desafio não requer workers distribuídos
-- Evita complexidade extra de infraestrutura (containers RabbitMQ/Kafka/Redis)
-- Demonstra domínio do modelo de concorrência nativa do Python
-- O `ConnectionManager` in-memory particionado por org é suficiente para o contexto do desafio
-- Em produção, a evolução natural seria Redis Pub/Sub para WebSocket distribuído e Celery para tasks pesadas
+- O volume de eventos deste sistema não justifica a complexidade operacional de um broker externo
+- `asyncio.create_task` é não-bloqueante, desacopla o processamento da resposta HTTP e demonstra domínio do modelo de concorrência nativo do Python
+- O `ConnectionManager` in-memory particionado por `organization_id` é suficiente para WebSocket num ambiente de instância única
+- Adicionar Redis Pub/Sub seria a evolução natural para escalar horizontalmente — conforme detalhado na resposta da Questão 2 do questionário técnico acima
